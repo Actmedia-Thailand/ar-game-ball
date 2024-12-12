@@ -1,65 +1,69 @@
-import { Canvas } from '@react-three/fiber';
-import { XR, ARButton } from '@react-three/xr';  // ใช้ XR จาก @react-three/xr
-import { Suspense } from 'react';
-import { useRef, useEffect } from "react";
+import { Canvas } from "@react-three/fiber";
+import { XR, ARButton, useXR } from "@react-three/xr";
+import { Suspense, useEffect } from "react";
 
-// ฟังก์ชันสำหรับการแสดงผลกล้อง
-const CameraBackground = () => {
-  const videoRef = useRef(null);
+// Component สำหรับแสดงพื้นผิวที่ตรวจพบ
+function DetectedPlanes() {
+	const { detectedPlanes, isPresenting } = useXR();
 
-  useEffect(() => {
-    if (navigator.mediaDevices) {
-      navigator.mediaDevices
-        .getUserMedia({ video: true })
-        .then((stream) => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-        })
-        .catch((err) => {
-          console.error("Error accessing camera: ", err);
-        });
-    }
-  }, []);
+	// ถ้ายังไม่ได้เริ่ม AR session หรือไม่มี detectedPlanes ให้ return null
+	if (!isPresenting || !detectedPlanes) return null;
 
-  return (
-    <video
-      ref={videoRef}
-      autoPlay
-      style={{
-        objectFit: "cover", // ใช้ cover เพื่อให้วิดีโอเต็มหน้าจอ
-        width: "100%", // กว้างสุด
-        height: "100%", // สูงสุด
-        position: "absolute",
-        top: "0",
-        left: "0",
-      }}
-    />
-  );
-};
+	return (
+		<>
+			{Array.from(detectedPlanes.values()).map((plane, index) => (
+				<mesh
+					key={plane.id || index}
+					position={plane.position}
+					rotation={plane.rotation}
+				>
+					<planeGeometry args={[plane.width || 1, plane.height || 1]} />
+					<meshBasicMaterial
+						color={`hsl(${index * 40}, 70%, 50%)`}
+						transparent
+						opacity={0.5}
+						wireframe={true}
+					/>
+				</mesh>
+			))}
+		</>
+	);
+}
 
 const ARApp = () => {
-  return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
-      <Canvas>
-        <ambientLight intensity={0.5} />
-        <directionalLight intensity={1} position={[5, 5, 5]} />
+	useEffect(() => {
+		if ("xr" in navigator) {
+			navigator.xr
+				.isSessionSupported("immersive-ar")
+				.then((supported) => {
+					console.log("AR Supported:", supported);
+				})
+				.catch((err) => console.log("Error checking AR support:", err));
+		} else {
+			console.log("WebXR not available");
+		}
+	}, []);
 
-        <Suspense fallback={<div>Loading...</div>}>
-          {/* วางวงกลมตรงกลางหน้าจอ */}
-          <mesh position={[0, 0, -5]}>
-            <sphereGeometry args={[1, 32, 32]} />
-            <meshBasicMaterial color="red" />
-          </mesh>
-        </Suspense>
+	return (
+		<div style={{ width: "100vw", height: "100vh" }}>
+			<ARButton
+				sessionInit={{
+					requiredFeatures: ["hit-test", "plane-detection"],
+					optionalFeatures: ["dom-overlay", "light-estimation"],
+					domOverlay: { root: document.body },
+				}}
+			/>
 
-        <XR> {/* ใช้งาน XR */}
-          <ARButton /> {/* เพิ่มปุ่ม AR */}
-        </XR>
-      </Canvas>
-      <CameraBackground /> {/* เพิ่มพื้นหลังเป็นกล้อง */}
-    </div>
-  );
+			<Canvas>
+				<Suspense fallback={null}>
+					<XR>
+						<ambientLight intensity={0.5} />
+						<DetectedPlanes />
+					</XR>
+				</Suspense>
+			</Canvas>
+		</div>
+	);
 };
 
 export default ARApp;
